@@ -41,7 +41,7 @@ from datetime import timedelta
 
 STATSFILE = '/proc/net/dev'
 
-#-- Is there a way to put this inside a function and still make it readable?
+#-- Is there a way to put this inside a function and still make it readable? (similar to tcl's regexp -expanded)
 
 parseIpStats = re.compile("^\
 (?P<srcip>\d+\.\d+\.\d+\.\d+)\s+<->\s+\
