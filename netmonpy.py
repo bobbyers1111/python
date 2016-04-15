@@ -5,6 +5,7 @@
 #   +----------+
 
 """
+
 SCRIPT: netmonpy.py
 AUTHOR: bob byers
 (C) 2016
@@ -18,18 +19,24 @@ following:
 
 1) Obtain current interface statistics for all interfaces
 
-2) Compute deltas for each stat and its corresponding stat from
-the previous iteration
+2) Compute deltas for each stat with its corresponding stat
+from previous iteration
 
-3) If any of the stats exceed some threshold, spawn an instance of
+3) If any stat exceeds some threshold, spawn an instance of
 wireshak, collecting traffic for a brief time, saving the packets
 to disk and displaying conversation and protocol summaries. The
 captured packets are left on disk for later analysis.
 
-4) sleep a pre-determined abount of time and repeat the loop
+4) sleep briefly and repeat the loop
 
-Currently there is no mechanism for gracefully exiting the loop.
-Suggested workaround is Ctrl-C to terminate the program.
+Use Ctrl-C to terminate the program.
+
+INTERESTING FEATURES
+
+1. Compiled regular expression with named fields.
+
+2. Spawns and communicates with child processes.
+
 """
 #------------------------------------------------------------------------------
 
@@ -146,30 +153,56 @@ def interesting(line):
 #---| uty_capsummaries |------------------------------------------
 #   +------------------+
 #
-# Display a summary of top conversations for traffic of a 
-#particular category
+# Invokes tshark on an existing capture file, using the '-z'
+# statistics feature to generate summaries of the traffic.
 #
-#   -----        ----------------------------
-#   categ	 Meaning
-#   -----        ----------------------------
-#    eth         MAC Addresses conversations
-#    ip          IP Address conversations
+# The caller supplies the name of the pcapfile as well as the
+# -z options to pass to tshark.
+#
+# ARGs
+#
+#     pcapfile       Name of the PCAP file
+#
+#     zopts          The '-z' option to pass on to tshark. This
+#                    must be a valid option for tshark. The '-z'
+#                    should be included as well. Examples:
+#
+#     ----         ---------------------------
+#     zopt	   Meaning
+#     ----         ---------------------------
+#    -zconv,eth   Summarize all Ethernet conversations
+#    -zconv,ip    Summarize all IP conversations
+#    -zio,phs     Produce a protocol hierarchy report
+#
+# TO DO:
+#
+#   Currently there is no validation of zopt passed in from
+#   the caller. We blindly pass zopt on to tshark. 
 #
 #-----------------------------------------------------------------
 
 def uty_capsummaries(pcapfile, categ):
 
+  #-- Spawn tshark
+
     child = sp.Popen([ '/usr/sbin/tshark', categ, '-nqr', pcapfile ], shell=False, stdout=sp.PIPE, stderr=sp.PIPE)
+
+  #-- Collect its output
 
     outbuf = ''
     for line in child.stdout:
       outbuf += line
 
+
     streamdata = child.communicate()[0]
     rc = child.returncode
 
+  #-- Check tshark exit status
+
     if rc != 0:
       print 'WARNING: tshark -zconv, '+categ+' returned non-zero status:',rc
+
+  #-- Display the tshark output
 
     for line in outbuf.split('\n'):
       #Only display data that is of interest to us
@@ -195,6 +228,13 @@ def do_capsummaries(pcapfile):
 # This function spawns an instance of tshark which collects packets on a
 # particular interface for a period of time, saving the results to disk for
 # later analysis.
+#
+# LIMITATION:
+#
+# This was developed on a system that 1) only allows tshark to capture
+# packets if effictive uid is root, and 2) sudoers is configured such
+# that tshark can be run as root by certain users without entering a
+# password.
 
 def do_tshark(iface,duration):
 
@@ -226,6 +266,16 @@ def do_tshark(iface,duration):
 #   +----------+
 #---| getstats |--------------------------------------------------
 #   +----------+
+#
+# Interface stats on a linux system can be obtained simply by reading
+# the file /proc/net/dev. Results for all interfaces are returned.
+#
+# This function opens that file, reads in its data, parses the data
+# line-by-line, stores the data in a two-dimensional list (each row
+# has data for one interface, stored as a dictionary structure)
+#
+# RETURNS:
+#   Returns the 2D statistics data structure. 
 
 def getstats():
 
