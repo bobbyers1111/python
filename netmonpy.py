@@ -31,9 +31,19 @@ captured packets are left on disk for later analysis.
 
 Use Ctrl-C to terminate the program.
 
-INTERESTING FEATURES
+---- LIMITATIONS --------------------
 
-1. Compiled regular expression with named fields.
+Assumes a linux system with /proc/net/dev
+
+Assumes wireshark is installed with its companion
+utilities (tshark and capinfos).
+
+Assumes tshark can be run by root via sudo WITHOUT password.
+
+---- INTERESTING PYTHON FEATURES ----
+
+1. Uses compiled regular expressions with named fields and
+   re.VERBOSE (to make the expression more readable).
 
 2. Spawns and communicates with child processes.
 
@@ -48,25 +58,12 @@ from datetime import timedelta
 
 STATSFILE = '/proc/net/dev'
 
-#-- Is there a way to put this inside a function and still make it readable? (similar to tcl's regexp -expanded)
-
-parseIpStats = re.compile("^\
-(?P<srcip>\d+\.\d+\.\d+\.\d+)\s+<->\s+\
-(?P<dstip>\d+\.\d+\.\d+\.\d+)\s+\
-(?P<rxframes>\d+)\s+\
-(?P<rxbytes>\d+)\s+\
-(?P<txframes>\d+)\s+\
-(?P<txbytes>\d+)\s+\
-(?P<totframes>\d+)\s+\
-(?P<totbytes>\d+)\s+\
-(?P<relstart>\S+)\s+\
-(?P<duration>\S+)\s*$")
-
 #   +-------+
 #---| touch |------------------------------------------------------
 #   +-------+
 #
-# Like /bin/touch, but not quite as mature ;)
+# Like /bin/touch, but not really ;). I need this to insure the
+# pcap file is owned by my uid, not root.
 
 def touch(file):
     open(file, 'a').close()
@@ -113,41 +110,89 @@ def run_capinfos(pcapfile):
 #---| interesting |-----------------------------------------------
 #   +-------------+
 #
-# Returns True if a line contains something we care about.
+# Examines a single line from the output of 'tshark -zconv,ip' or
+# 'tshark -zconv,eth'
 #
-# TO DO:
+# Returns True if the line contains something we care about (e.g.,
+# an IP conversation or a MAC conversation). Such lines get a
+# return value of True.
 #
-# Make regular expressions more stringent.
+# In addition, the total frame count of any stat must exceed a
+# threshold in order to be considered 'interesting'
 #
-# Parse actual values to do integer comparisons (rather than
-# counting spaces between fields)
+# Anything else (e.g., blank lines, headers, etc.) are deemed
+# not 'interesting' and get a return value of False.
 
 def interesting(line):
 
-  #-- Threshold 
+  #-- Lines with total frame count under this
+  #-- threshold are deemed 'uninteresting'
 
-      THRESH_totframes = 25
+      THRESH_totframes = 50
 
-  #-- Ignore Eth conversations with too few frames
-      if re.search("^..:..:..:..:..:..    .-. ..:..:..:..:..:..          .", line):
-        return False
+  #-- regexes for parsing tshark -zconv, output ----
 
-  #-- Ignore IP conversations with too few frames
+    parseEthStats = re.compile(
+      '''
+      ## This regex is used to parse a line of Ethernet
+      ## MAC conversation stats (tshark -zconv,eth)
+
+        (?P<srcmac>\x{2}:\x{2}:\x{2}:\x{2}:\x{2}:\x{2})\s+
+        <->\s+    # Literally, the string '<->'
+        (?P<dstmac>\x{2}:\x{2}:\x{2}:\x{2}:\x{2}:\x{2})\s+
+        (?P<rxframes>\d+)\s+
+        (?P<rxbytes>\d+)\s+
+        (?P<txframes>\d+)\s+
+        (?P<txbytes>\d+)\s+
+        (?P<totframes>\d+)\s+
+        (?P<totbytes>\d+)\s+
+        (?P<relstart>\S+)\s+
+        (?P<duration>\S+)\s*$
+      ''',
+      re.VERBOSE)
+
+    parseIpStats = re.compile(
+      '''
+      ## This regex is used to parse a line of
+      ## IP conversation stats (tshark -zconv,ip)
+
+        (?P<srcip>\d+\.\d+\.\d+\.\d+)\s+
+        <->\s+    # Literally, the string '<->'
+        (?P<dstip>\d+\.\d+\.\d+\.\d+)\s+
+        (?P<rxframes>\d+)\s+
+        (?P<rxbytes>\d+)\s+
+        (?P<txframes>\d+)\s+
+        (?P<txbytes>\d+)\s+
+        (?P<totframes>\d+)\s+
+        (?P<totbytes>\d+)\s+
+        (?P<relstart>\S+)\s+
+        (?P<duration>\S+)\s*$
+      ''',
+      re.VERBOSE)
+
+  #-- Check if this line is an Eth conversation stat
+
+      parsed = re.search(parseEthStats, line)
+
+      if parsed:
+        if int(parsed.group('totframes')) <= THRESH_totframes:
+          return False
+        else:
+          return True
+
+  #-- Check if this line is an IP conversation stat
 
       parsed = re.search(parseIpStats, line)
 
       if parsed:
         if int(parsed.group('totframes')) <= THRESH_totframes:
           return False
+        else:
+          return True
 
-  #-- Ignore the filter report from tshark, it has no interest to us
+  #-- If we get this far the line is not interesting
 
-      if re.search("^Filter:.No Filter.", line):
-        return False
-
-  #-- If we get this far the line must be interesting
-
-      return True
+      return False
 
 #   +------------------+
 #---| uty_capsummaries |------------------------------------------
@@ -163,7 +208,7 @@ def interesting(line):
 #
 #     pcapfile       Name of the PCAP file
 #
-#     zopts          The '-z' option to pass on to tshark. This
+#     zopt           The '-z' option to pass on to tshark. This
 #                    must be a valid option for tshark. The '-z'
 #                    should be included as well. Examples:
 #
@@ -176,16 +221,16 @@ def interesting(line):
 #
 # TO DO:
 #
-#   Currently there is no validation of zopt passed in from
+#   Currently there is no validation of the zopt passed in from
 #   the caller. We blindly pass zopt on to tshark. 
 #
 #-----------------------------------------------------------------
 
-def uty_capsummaries(pcapfile, categ):
+def uty_capsummaries(pcapfile, zopt):
 
   #-- Spawn tshark
 
-    child = sp.Popen([ '/usr/sbin/tshark', categ, '-nqr', pcapfile ], shell=False, stdout=sp.PIPE, stderr=sp.PIPE)
+    child = sp.Popen([ '/usr/sbin/tshark', zopt, '-nqr', pcapfile ], shell=False, stdout=sp.PIPE, stderr=sp.PIPE)
 
   #-- Collect its output
 
@@ -193,14 +238,13 @@ def uty_capsummaries(pcapfile, categ):
     for line in child.stdout:
       outbuf += line
 
-
     streamdata = child.communicate()[0]
     rc = child.returncode
 
   #-- Check tshark exit status
 
     if rc != 0:
-      print 'WARNING: tshark -zconv, '+categ+' returned non-zero status:',rc
+      print 'WARNING: tshark -zconv, '+zopt+' returned non-zero status:',rc
 
   #-- Display the tshark output
 
@@ -232,9 +276,11 @@ def do_capsummaries(pcapfile):
 # LIMITATION:
 #
 # This was developed on a system that 1) only allows tshark to capture
-# packets if effictive uid is root, and 2) sudoers is configured such
-# that tshark can be run as root by certain users without entering a
-# password.
+# packets as root, and 2) sudoers is configured such that tshark can
+# be run as root by the current user without entering a password.
+#
+# TO DO:
+# Create the ouptut directory if it doesn't already exist
 
 def do_tshark(iface,duration):
 
@@ -279,39 +325,65 @@ def do_tshark(iface,duration):
 
 def getstats():
 
+  regex_procNetDev = re.compile(
+    '''^\s*
+    ## This regex is used to parse a data line read from /proc/net/dev
+       ^\s*
+       (?P<iface>[^:]+)\s+         # Interface name, terminated by ':'
+       (?P<rxbytes>\d+)\s+
+       (?P<rxpkts>\d+)\s+
+       (?P<rxerrs>\d+)\s+
+       (?P<rxdrop>\d+)\s+
+       (?P<rxfifo>\d+)\s+
+       (?P<rxframe>\d+)\s+
+       (?P<rxcompressed>\d+)\s+
+       (?P<rxmulticast>\d+)\s+
+       (?P<txbytes>\d+)\s+
+       (?P<txpackets>\d+)\s+
+       (?P<txerrs>\d+)\s+
+       (?P<txdrop>\d+)\s+
+       (?P<txfifo>\d+)\s+
+       (?P<txcolls>\d+)\s+
+       (?P<txcarrier>\d+)\s+
+       (?P<txcompressed>\d+)
+       \s*$
+    ''',
+    re.VERBOSE)
+
   stats = {}
 
   FH = open(STATSFILE, 'r')
 
   for line in FH:
 
-    line = line.strip()
+    if line.strip() != "":
 
-    if line != "":
+      parsed = re.match(regex_procNetDev, line)
 
-      groups = re.match("^([^:]+)\s*:\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$", line)
+      if parsed:
 
-      if groups:
+        iface = parsed.group('iface')
 
-        iface = groups.group(1)
+        #-- Each row of the stats table contains all
+        #-- stats for one interface, stored as a dictionary
 
         stats[iface] = {
-         'rxbytes' : groups.group(2),
-         'rxpkts' : groups.group(3),
-         'rxerrs' : groups.group(4),
-         'rxdrop' : groups.group(5),
-         'rxfifo' : groups.group(6),
-         'rxframe' : groups.group(7),
-         'rxcompressed' : groups.group(8),
-         'rxmulticast' : groups.group(9),
-         'txbytes' : groups.group(10),
-         'txpackets' : groups.group(11),
-         'txerrs' : groups.group(12),
-         'txdrop' : groups.group(13),
-         'txfifo' : groups.group(14),
-         'txcolls' : groups.group(15),
-         'txcarrier' : groups.group(16),
-         'txcompressed' : groups.group(17)
+         'rxbytes' : parsed.group('rxbytes'),
+         'rxpkts' : parsed.group('rxpkts'),
+         'rxerrs' : parsed.group('rxerrs'),
+         'rxdrop' : parsed.group('rxdrop'),
+         'rxfifo' : parsed.group('rxfifo'),
+         'rxframe' : parsed.group('rxframe'),
+         'rxcompressed' : parsed.group('rxcompressed'),
+         'rxmulticast' : parsed.group('rxmulticast'),
+         'txbytes' : parsed.group(1'txbytes'),
+         'txpackets' : parsed.group(1'txpackets'),
+         'txerrs' : parsed.group(1'txerrs'),
+         'txdrop' : parsed.group(1'txdrop'),
+         'txfifo' : parsed.group(1'txfifo'),
+         'txcolls' : parsed.group(1'txcolls'),
+         'txcarrier' : parsed.group(1'txcarrier'),
+         'txcompressed' : parsed.group('txcompressed')
         }
 
   FH.close()
