@@ -10,16 +10,17 @@ SCRIPT: netmonpy.py
 AUTHOR: bob byers
 (C) 2016
 
-This script is a very simplistic network monitoring tool. It is designed
-more as a vehicle for learning python than as a production-ready script.
+This script is a very simplistic network monitoring tool. It is
+designed more as a vehicle for learning python than as a
+production-ready script.
 
-When invoked, the script enters a loop which performs the following:
+When invoked, the script enters a loop which performs the
+following:
 
-1) Obtain current interface statistics for all interfaces by reading
-/proc/dev/net
+1) Obtain current interface statistics for all interfaces
 
-2) Compute deltas for each stat with its corresponding stat from
-previous iteration
+2) Compute deltas for each stat with its corresponding stat
+from previous iteration
 
 3) If any stat exceeds some threshold, spawn an instance of
 wireshak, collecting traffic for a brief time, saving the packets
@@ -127,46 +128,44 @@ def interesting(line):
   #-- Lines with total frame count under this
   #-- threshold are deemed 'uninteresting'
 
-      THRESH_totframes = 50
+      THRESH_minframes = 50
 
   #-- regexes for parsing tshark -zconv, output ----
 
-    parseEthStats = re.compile(
+      parseEthStats = re.compile(
       '''
-      ## This regex is used to parse a line of Ethernet
-      ## MAC conversation stats (tshark -zconv,eth)
+        ## This parses Ethernet MAC stats from 'tshark -zconv,eth'
 
-        (?P<srcmac>\x{2}:\x{2}:\x{2}:\x{2}:\x{2}:\x{2})\s+
-        <->\s+    # Literally, the string '<->'
-        (?P<dstmac>\x{2}:\x{2}:\x{2}:\x{2}:\x{2}:\x{2})\s+
-        (?P<rxframes>\d+)\s+
-        (?P<rxbytes>\d+)\s+
-        (?P<txframes>\d+)\s+
-        (?P<txbytes>\d+)\s+
-        (?P<totframes>\d+)\s+
-        (?P<totbytes>\d+)\s+
-        (?P<relstart>\S+)\s+
-        (?P<duration>\S+)\s*$
+          (?P<srcmac>[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\s+
+          <->\s+    # Literally, the string '<->'
+          (?P<dstmac>[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\s+
+          (?P<rxframes>\d+)\s+
+          (?P<rxbytes>\d+)\s+
+          (?P<txframes>\d+)\s+
+          (?P<txbytes>\d+)\s+
+          (?P<totframes>\d+)\s+
+          (?P<totbytes>\d+)\s+
+          (?P<relstart>\S+)\s+
+          (?P<duration>\S+)\s*$
       ''',
       re.VERBOSE)
 
-    parseIpStats = re.compile(
-      '''
-      ## This regex is used to parse a line of
-      ## IP conversation stats (tshark -zconv,ip)
+      parseIpStats = re.compile(
+      """
+        ## This parses IP stats from 'tshark -zconv,ip'
 
-        (?P<srcip>\d+\.\d+\.\d+\.\d+)\s+
-        <->\s+    # Literally, the string '<->'
-        (?P<dstip>\d+\.\d+\.\d+\.\d+)\s+
-        (?P<rxframes>\d+)\s+
-        (?P<rxbytes>\d+)\s+
-        (?P<txframes>\d+)\s+
-        (?P<txbytes>\d+)\s+
-        (?P<totframes>\d+)\s+
-        (?P<totbytes>\d+)\s+
-        (?P<relstart>\S+)\s+
-        (?P<duration>\S+)\s*$
-      ''',
+          (?P<srcip>\d+\.\d+\.\d+\.\d+)\s+
+          <->\s+    # Literally, the string '<->'
+          (?P<dstip>\d+\.\d+\.\d+\.\d+)\s+
+          (?P<rxframes>\d+)\s+
+          (?P<rxbytes>\d+)\s+
+          (?P<txframes>\d+)\s+
+          (?P<txbytes>\d+)\s+
+          (?P<totframes>\d+)\s+
+          (?P<totbytes>\d+)\s+
+          (?P<relstart>\S+)\s+
+          (?P<duration>\S+)\s*$
+      """,
       re.VERBOSE)
 
   #-- Check if this line is an Eth conversation stat
@@ -174,7 +173,7 @@ def interesting(line):
       parsed = re.search(parseEthStats, line)
 
       if parsed:
-        if int(parsed.group('totframes')) <= THRESH_totframes:
+        if int(parsed.group('totframes')) <= THRESH_minframes:
           return False
         else:
           return True
@@ -328,7 +327,7 @@ def getstats():
     '''^\s*
     ## This regex is used to parse a data line read from /proc/net/dev
        ^\s*
-       (?P<iface>[^:]+)\s+         # Interface name, terminated by ':'
+       (?P<iface>[^:]+):\s+         # Interface name, terminated by ':'
        (?P<rxbytes>\d+)\s+
        (?P<rxpkts>\d+)\s+
        (?P<rxerrs>\d+)\s+
@@ -375,13 +374,13 @@ def getstats():
          'rxframe' : parsed.group('rxframe'),
          'rxcompressed' : parsed.group('rxcompressed'),
          'rxmulticast' : parsed.group('rxmulticast'),
-         'txbytes' : parsed.group(1'txbytes'),
-         'txpackets' : parsed.group(1'txpackets'),
-         'txerrs' : parsed.group(1'txerrs'),
-         'txdrop' : parsed.group(1'txdrop'),
-         'txfifo' : parsed.group(1'txfifo'),
-         'txcolls' : parsed.group(1'txcolls'),
-         'txcarrier' : parsed.group(1'txcarrier'),
+         'txbytes' : parsed.group('txbytes'),
+         'txpackets' : parsed.group('txpackets'),
+         'txerrs' : parsed.group('txerrs'),
+         'txdrop' : parsed.group('txdrop'),
+         'txfifo' : parsed.group('txfifo'),
+         'txcolls' : parsed.group('txcolls'),
+         'txcarrier' : parsed.group('txcarrier'),
          'txcompressed' : parsed.group('txcompressed')
         }
 
@@ -398,7 +397,11 @@ def check_stats(prevstats, stats, direction, capifs):
     print
     print '==',direction.upper()
 
-    THRESH = 1000000
+    #-- Threshold for triggering a print statement
+    THRESH_forprint = 10
+
+    #-- Threshold for triggering a packet capture
+    THRESH_forcapture = 1000000
 
     for iface in sorted(stats):
 
@@ -408,10 +411,10 @@ def check_stats(prevstats, stats, direction, capifs):
 
           diff = int(stats[iface][key]) - int(prevstats[iface][key])
 
-          if diff >= 10:
+          if diff >= THRESH_forprint:
             print '%4s %13s : %20s - %20s = %d' % (iface, key, stats[iface][key], prevstats[iface][key], diff)
 
-          if diff > THRESH:
+          if diff > THRESH_forcapture:
             capifs.add(iface)
 
 #   +------+
