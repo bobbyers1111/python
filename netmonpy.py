@@ -10,17 +10,16 @@ SCRIPT: netmonpy.py
 AUTHOR: bob byers
 (C) 2016
 
-This script is a very simplistic network monitoring tool. It is
-designed more as a vehicle for learning python than as a
-production-ready script.
+This script is a very simplistic network monitoring tool. It is designed
+more as a vehicle for learning python than as a production-ready script.
 
-When invoked, the script enters a loop which performs the
-following:
+When invoked, the script enters a loop which performs the following:
 
-1) Obtain current interface statistics for all interfaces
+1) Obtain current interface statistics for all interfaces by reading
+/proc/dev/net
 
-2) Compute deltas for each stat with its corresponding stat
-from previous iteration
+2) Compute deltas for each stat with its corresponding stat from
+previous iteration
 
 3) If any stat exceeds some threshold, spawn an instance of
 wireshak, collecting traffic for a brief time, saving the packets
