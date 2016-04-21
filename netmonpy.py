@@ -72,8 +72,8 @@ def touch(file):
 #---| run_capinfos |----------------------------------------------
 #   +--------------+
 #
-# Spawns wireshark's capinfos utility, which we use to display an
-# overall summary of the pcap file (packets, duration, etc.)
+# Spawns wireshark's capinfos utility, captures its output and sends it
+# to our own stdout.
 #
 # ARGS
 #   pcapfile	Name of a PCAP file
@@ -130,7 +130,7 @@ def interesting(line):
 
       THRESH_minframes = 50
 
-  #-- regexes for parsing tshark -zconv, output ----
+  #-- For parsing tshark with -zconv,eth option
 
       parseEthStats = re.compile(
       '''
@@ -149,6 +149,8 @@ def interesting(line):
           (?P<duration>\S+)\s*$
       ''',
       re.VERBOSE)
+
+  #-- For parsing tshark with -zconv,ip option
 
       parseIpStats = re.compile(
       """
@@ -219,8 +221,8 @@ def interesting(line):
 #
 # TO DO:
 #
-#   Currently there is no validation of the zopt passed in from
-#   the caller. We blindly pass zopt on to tshark. 
+#   Currently there is no validation of zopt. The caller can pass in
+#   anything and we'll blindly pass it on to tshark's command line.
 #
 #-----------------------------------------------------------------
 
@@ -270,6 +272,15 @@ def do_capsummaries(pcapfile):
 # This function spawns an instance of tshark which collects packets on a
 # particular interface for a period of time, saving the results to disk for
 # later analysis.
+#
+# ARGS:
+#
+#     iface          The interface to be used for capturing
+#     duration       Duration, in seconds, to do the capturing
+#
+# RETURNS:
+#
+#     <nothing>
 #
 # LIMITATION:
 #
@@ -393,6 +404,27 @@ def getstats():
 #   +-------------+
 
 def check_stats(prevstats, stats, direction, capifs):
+  '''
+    Given two samples of interface stats taken at different times, we
+    compute the delta for each stat and then take further action based
+    on two thresholds:
+
+    1) If the first threshold is breached, we print the stats.
+
+    2) Additionally, if the second threshold is breached, we stage this
+       interface for later capturing and analysis.
+
+    ARGS:
+      prevstats      Interface stats from previous sample
+      stats          Current interface stat sample
+      direction      Process stats only in this direction ('RX' or 'TX')
+      capifs         A set containing all interfaces that require
+                     subsequent packet capturing
+
+    RETURNS:
+      <nothing>
+
+  '''
 
     print
     print '==',direction.upper()
