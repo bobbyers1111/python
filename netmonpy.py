@@ -183,7 +183,7 @@ def interesting(line):
       parsed = re.search(parseIpStats, line)
 
       if parsed:
-        if int(parsed.group('totframes')) <= THRESH_totframes:
+        if int(parsed.group('totframes')) <= THRESH_minframes:
           return False
         else:
           return True
