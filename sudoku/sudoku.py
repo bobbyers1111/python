@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from random import random
+import random as ra
 
 class Game():
 
@@ -8,9 +8,7 @@ class Game():
 
     self.board = [ [ [ '123456789' for col in range(3)] for row in range(3) ] for box in range(3) ]
 
-
-   '''
-
+    '''
       +-------+-------+-------+    +-------+-------+-------+    +-------+-------+-------+
       |  123  |  123  |  123  |    |  123  |  123  |  123  |    |  123  |  123  |  123  |
       |  456  |  456  |  456  |    |  456  |  456  |  456  |    |  456  |  456  |  456  |
@@ -52,14 +50,101 @@ class Game():
       |  456  |  456  |  456  |    |  456  |  456  |  456  |    |  456  |  456  |  456  |
       |  789  |  789  |  789  |    |  789  |  789  |  789  |    |  789  |  789  |  789  |
       +-------+-------+-------+    +-------+-------+-------+    +-------+-------+-------+
+    '''
 
+  def triad(self,box,row,col,n):
+    if n == 1:
+      return self.board[box][row][col][:3]
+    elif n == 2:
+      return self.board[box][row][col][3:6]
+    if n == 3:
+      return self.board[box][row][col][6:]
+    else:
+      return '???'
 
-   '''
+  #   +------+
+  #---| show |---
+  #   +------+
 
   def show(self):
+
+    #-- Display each row
+
+      for rowX in range(9):
+        row = rowX % 3
+
+        if row == 0:
+          print()
+          print('  +',end='')
+          for box in range(3):
+            for col in range(3):
+              print('-----+',end='')
+            if box < 2:
+              print('    +',end='')
+          print()
+
+        #-- A separate sub-row for each group of three candidates (123, 456, and 789)
+
+        for candRow in [1,2,3]:
+
+          print('  |',end='')
+
+          for box in range(3):
+            for col in range(3):
+              cands = self.triad(box,row,col,candRow)
+              print(' %s |' % (cands),end='')
+            if box < 2:
+              print('    |',end='')
+          print()
+
+        #-- Bottom divider row (between every box, vertically)
+
+        print('  +',end='')
+        for box in range(3):
+          for col in range(3):
+            print('-----+',end='')
+          if box < 2:
+            print('    +',end='')
+        print()
+
+  #   +----------+
+  #---| pickNums |---
+  #   +----------+
+
+  def pickNums(self):
+
+    '''
+          TO DO:
+
+          Make picked numbers be UNIQUE
+
+    '''
+
     print()
     print()
+    print()
+    print('==== PICKING NUMBERS ====')
+
+    for box in range(3):
+      for row in range(3):
+        for col in range(3):
+
+          num = ra.randint(1,9)
+
+          leftSpaces = num - 1
+          rightSpaces = 9 - num
+          newVal = ' '*leftSpaces+str(num)+' '*rightSpaces
+          self.board[box][row][col] = newVal
+
+          print('    box %d%d%d, picked: %d newVal: >%s<' % (box,row,col,num,newVal))
+
+
+#   +------+
+#---| MAIN |-------------------------------------------------------------------
+#   +------+
 
 game = Game()
-print(game.N)
+game.show()
+game.pickNums()
+game.show()
 
