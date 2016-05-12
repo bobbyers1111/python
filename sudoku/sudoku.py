@@ -107,6 +107,15 @@ class Game():
             print('    +',end='')
         print()
 
+  #   +---------+
+  #---| isTaken |---
+  #   +---------+
+
+  #----------------- UNDER CONSTRUCTION -----------------#
+
+  def isTaken(self,box,row,col,val):
+    return -1
+
   #   +----------+
   #---| pickNums |---
   #   +----------+
